@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   FolderGit2,
   Search,
@@ -114,6 +114,35 @@ export default function CircularsPage() {
   const [newAudience, setNewAudience] = useState("");
   const [newSummary, setNewSummary] = useState("");
 
+  // Fetch circulars from MongoDB via API
+  useEffect(() => {
+    async function loadCirculars() {
+      try {
+        const res = await fetch("/api/circulars");
+        const json = await res.json();
+        if (json.data && Array.isArray(json.data) && json.data.length > 0) {
+          const mapped: CircularItem[] = json.data.map((item: any, idx: number) => ({
+            id: item._id || `circ-${idx}`,
+            refNo: `CIR/2026/${item.organization ? item.organization.substring(0, 3).toUpperCase() : "GEN"}-${100 + idx}`,
+            title: item.position || item.title || "Official Announcement",
+            category: "Recruitment",
+            issuer: item.organization || "Department Administration",
+            publishDate: item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "Recent",
+            deadline: item.applicationDeadline ? new Date(item.applicationDeadline).toLocaleDateString() : undefined,
+            status: "Active",
+            audience: "All Students",
+            summary: `Recruitment and examination notice for ${item.position || "target roles"}.`,
+            attachmentSize: "1.2 MB PDF",
+          }));
+          setCirculars(mapped);
+        }
+      } catch (err) {
+        console.error("Error loading circulars from MongoDB:", err);
+      }
+    }
+    loadCirculars();
+  }, []);
+
   const handleDownload = (refNo: string, title: string) => {
     setToastMessage(`Downloading official circular: [${refNo}] ${title}`);
     setTimeout(() => {
@@ -121,32 +150,65 @@ export default function CircularsPage() {
     }, 3500);
   };
 
-  const handleAddCircular = (e: React.FormEvent) => {
+  const handleAddCircular = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim() || !newRefNo.trim()) return;
 
-    const newCirc: CircularItem = {
-      id: `circ-${Date.now()}`,
-      refNo: newRefNo,
-      title: newTitle,
-      category: newCategory,
-      issuer: newIssuer || "Department Administration",
-      publishDate: "Today",
-      status: "Active",
-      audience: newAudience || "All Students",
-      summary: newSummary || "Newly published circular notice.",
-      attachmentSize: "500 KB PDF",
+    const payload = {
+      organization: newIssuer || "University Career Services",
+      position: newTitle,
+      applicationDeadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+      circularFileUrl: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
     };
 
-    setCirculars([newCirc, ...circulars]);
-    setIsModalOpen(false);
+    try {
+      const res = await fetch("/api/circulars", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    // Reset
+      const json = await res.json();
+      const newCirc: CircularItem = {
+        id: json.data?._id || `circ-${Date.now()}`,
+        refNo: newRefNo,
+        title: newTitle,
+        category: newCategory,
+        issuer: newIssuer || "Department Administration",
+        publishDate: "Today",
+        status: "Active",
+        audience: newAudience || "All Students",
+        summary: newSummary || "Newly published circular notice.",
+        attachmentSize: "500 KB PDF",
+      };
+
+      setCirculars([newCirc, ...circulars]);
+      setToastMessage(`Saved circular to MongoDB!`);
+    } catch {
+      const newCirc: CircularItem = {
+        id: `circ-${Date.now()}`,
+        refNo: newRefNo,
+        title: newTitle,
+        category: newCategory,
+        issuer: newIssuer || "Department Administration",
+        publishDate: "Today",
+        status: "Active",
+        audience: newAudience || "All Students",
+        summary: newSummary || "Newly published circular notice.",
+        attachmentSize: "500 KB PDF",
+      };
+
+      setCirculars([newCirc, ...circulars]);
+      setToastMessage(`Saved circular locally.`);
+    }
+
+    setIsModalOpen(false);
     setNewTitle("");
     setNewRefNo("");
     setNewIssuer("");
     setNewAudience("");
     setNewSummary("");
+    setTimeout(() => setToastMessage(null), 3500);
   };
 
   const categories = ["All", "Recruitment", "Exam Notice", "Academic", "Administrative"];

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Folder,
   FolderOpen,
@@ -337,6 +337,33 @@ export default function StudyMaterialsPage() {
   const [newDescription, setNewDescription] = useState("");
   const [newFileSize, setNewFileSize] = useState("2.1 MB");
 
+  // Fetch topics from MongoDB via API
+  useEffect(() => {
+    async function loadMaterials() {
+      try {
+        const res = await fetch("/api/study-materials");
+        const json = await res.json();
+        if (json.data && Array.isArray(json.data) && json.data.length > 0) {
+          const mapped: PDFTopic[] = json.data.map((item: any, idx: number) => ({
+            id: item._id || `mat-${idx}`,
+            subjectName: item.subjectName || "Computer Science",
+            topicTitle: item.topicTitle || "Study Guide",
+            pdfUrl: item.pdfUrl || "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+            fileSize: "2.1 MB",
+            pageCount: 30,
+            createdAt: item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "Recently",
+            downloads: 150 + idx * 25,
+            description: `Official comprehensive notes for ${item.subjectName}`,
+          }));
+          setTopics(mapped);
+        }
+      } catch (err) {
+        console.error("Error loading study materials from MongoDB:", err);
+      }
+    }
+    loadMaterials();
+  }, []);
+
   const handleSelectFolder = (folder: SubjectFolder) => {
     setSelectedFolder(folder);
     setSearchQuery("");
@@ -358,23 +385,53 @@ export default function StudyMaterialsPage() {
     }, 3500);
   };
 
-  const handleAddTopic = (e: React.FormEvent) => {
+  const handleAddTopic = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTopicTitle.trim() || !newPdfUrl.trim() || !selectedFolder) return;
 
-    const newTopic: PDFTopic = {
-      id: `top-${Date.now()}`,
+    const payload = {
       subjectName: selectedFolder.name,
       topicTitle: newTopicTitle,
       pdfUrl: newPdfUrl,
-      fileSize: newFileSize || "1.8 MB",
-      pageCount: 25,
-      createdAt: "Just now",
-      downloads: 1,
-      description: newDescription || "Uploaded study material for " + selectedFolder.name,
     };
 
-    setTopics([newTopic, ...topics]);
+    try {
+      const res = await fetch("/api/study-materials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await res.json();
+      const newTopic: PDFTopic = {
+        id: json.data?._id || `top-${Date.now()}`,
+        subjectName: selectedFolder.name,
+        topicTitle: newTopicTitle,
+        pdfUrl: newPdfUrl,
+        fileSize: newFileSize || "1.8 MB",
+        pageCount: 25,
+        createdAt: "Just now",
+        downloads: 1,
+        description: newDescription || "Uploaded study material for " + selectedFolder.name,
+      };
+
+      setTopics([newTopic, ...topics]);
+      setToastMessage(`Saved "${newTopicTitle}" to MongoDB!`);
+    } catch {
+      const newTopic: PDFTopic = {
+        id: `top-${Date.now()}`,
+        subjectName: selectedFolder.name,
+        topicTitle: newTopicTitle,
+        pdfUrl: newPdfUrl,
+        fileSize: newFileSize || "1.8 MB",
+        pageCount: 25,
+        createdAt: "Just now",
+        downloads: 1,
+        description: newDescription || "Uploaded study material for " + selectedFolder.name,
+      };
+      setTopics([newTopic, ...topics]);
+      setToastMessage(`Saved "${newTopicTitle}" locally.`);
+    }
 
     // Update topicsCount in folders
     setFolders((prev) =>
@@ -387,6 +444,7 @@ export default function StudyMaterialsPage() {
     setNewTopicTitle("");
     setNewPdfUrl("");
     setNewDescription("");
+    setTimeout(() => setToastMessage(null), 3500);
   };
 
   // Filtered topics for the selected subject
